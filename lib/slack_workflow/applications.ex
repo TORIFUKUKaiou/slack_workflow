@@ -12,7 +12,14 @@ defmodule SlackWorkflow.Applications do
     |> Enum.map(fn {blocks, ts, name} -> {Map.get(blocks, "text"), ts, name} end)
     |> Enum.filter(fn {text_map, _, _} -> Map.get(text_map, "type") == "mrkdwn" end)
     |> Enum.map(fn {text_map, ts, name} -> {Map.get(text_map, "text"), ts, name} end)
-    |> Enum.map(fn {text, ts, name} -> {parse(text, members), ts, name} end)
+    |> Enum.map(fn {text, ts, name} -> {text, first_key_index(text), ts, name} end)
+    |> Enum.filter(fn {_, first_key_index, _, _} -> first_key_index end)
+    |> Enum.map(fn {text, first_key_index, ts, name} ->
+      {text, first_key_index, second_key_index(text, first_key_index), ts, name}
+    end)
+    |> Enum.map(fn {text, first_key_index, second_key_index, ts, name} ->
+      {parse(text, first_key_index, second_key_index, members), ts, name}
+    end)
     |> Enum.map(fn {keywords, ts, name} ->
       {Keyword.put(keywords, :created_at, date(ts)), ts, name}
     end)
@@ -68,18 +75,21 @@ defmodule SlackWorkflow.Applications do
     |> name(members)
   end
 
-  defp parse(s, members) do
-    first = s |> String.split("\n") |> Enum.find_index(&(&1 =~ ~r/\*.+\*/))
+  defp first_key_index(s) do
+    s |> String.split("\n") |> Enum.find_index(&(&1 =~ ~r/\*.+\*/))
+  end
 
-    second =
-      s
-      |> String.split("\n")
-      |> Enum.slice((first + 1)..-1)
-      |> Enum.find_index(&(&1 =~ ~r/\*.+\*/))
-      |> Kernel.+(first)
-      |> Kernel.+(1)
+  defp second_key_index(s, first_key_index) do
+    s
+    |> String.split("\n")
+    |> Enum.slice((first_key_index + 1)..-1)
+    |> Enum.find_index(&(&1 =~ ~r/\*.+\*/))
+    |> Kernel.+(first_key_index)
+    |> Kernel.+(1)
+  end
 
-    index = if second - first > 1, do: first, else: second
+  defp parse(s, first_key_index, second_key_index, members) do
+    index = if second_key_index - first_key_index > 1, do: first_key_index, else: second_key_index
 
     s
     |> String.split("\n")
